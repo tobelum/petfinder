@@ -1,0 +1,307 @@
+{
+  "cells": [
+    {
+      "metadata": {
+        "_uuid": "8f2839f25d086af736a60e9eeb907d3b93b6e0e5",
+        "_cell_guid": "b1076dfc-b9ad-4769-8c92-a6c4dae69d19",
+        "trusted": true
+      },
+      "cell_type": "code",
+      "source": "import pandas as pd\nimport numpy as np\nimport json\nimport seaborn as sns\nimport matplotlib.pyplot as plt\nfrom sklearn.feature_selection import RFE\nfrom sklearn.linear_model import LogisticRegression\nimport statsmodels.api as sm\nfrom sklearn import metrics\nimport hypertools as hyp\nfrom imblearn.over_sampling import SMOTE\nfrom xgboost import XGBClassifier\nfrom sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.decomposition import PCA\nfrom sklearn.ensemble import ExtraTreesClassifier",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "_cell_guid": "79c7e3d0-c299-4dcb-8224-4455121ee9b0",
+        "_uuid": "d629ff2d2480ee46fbb7e2d37f6b5fab8052498a",
+        "trusted": true
+      },
+      "cell_type": "code",
+      "source": "pets = pd.read_csv('../input/train/train.csv')\npets2 = pd.read_csv('../input/test/test.csv')",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "ebe7a6c1c0f30c6ca14202591260c0961c097162"
+      },
+      "cell_type": "code",
+      "source": "petID = np.asarray(pets2.PetID)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "515b8ce19ae839ec688c766c2a99c44294143435"
+      },
+      "cell_type": "code",
+      "source": "def add_pure(dataframe):\n    #create new column and set values to 0 by default\n    dataframe['pure_bred'] = 0\n\n    #For loop to check if pet is pure bred and change the values accordingly\n    for i in range(0,(len(pets))):\n        try:\n            if dataframe.Breed2[i] == 0 or (dataframe.Breed1[i] == dataframe.Breed2[i]):\n                dataframe.iat[i, dataframe.columns.get_loc('pure_bred')] = 1\n        except:\n            continue\n    return (dataframe)\n    #pets.pure_bred.value_counts(dropna = False)\n#'../input/test/test_sentiment/'\ndef add_sentiments(dataframe, path):\n    dataframe['sentiment_score'] = float(0)\n    dataframe['sentiment_magnitude'] = float(0)\n\n    for i in range(0,(len(dataframe))):\n        filename = path + dataframe.PetID[i] + '.json'\n        try:\n            with open(filename, 'r') as f:\n                sentiments = json.load(f)\n                dataframe.iat[i, dataframe.columns.get_loc('sentiment_score')] = sentiments['documentSentiment']['score']\n                dataframe.iat[i, dataframe.columns.get_loc('sentiment_magnitude')] = sentiments['documentSentiment']['magnitude']\n        except FileNotFoundError:\n            continue\n    return (dataframe)\n    #dataframe.sentiment_score.value_counts(dropna = False)\n    \ndef create_cats(dataframe):\n    for i in dataframe.columns:\n        #if i is not dataframe.columns[2] and i is not dataframe.columns[10] and i is not dataframe.columns[15] and i is not dataframe.columns[18] and i is not dataframe.columns[22] and i is not dataframe.columns[25] and i is not dataframe.columns[26]:\n        if i not in ['Age', 'AdoptionSpeed', 'FurLength', 'Quantity', 'Fee', 'VideoAmt', 'PhotoAmt', 'sentiment_score', 'sentiment_magnitude', 'desc_len']:\n            dataframe[i] = dataframe[i].astype('category')\n            #dataframe[i] = pd.get_dummies(dataframe[i])\n\ndef sentiment_to_float(dataframe):\n    dataframe.sentiment_score = dataframe.sentiment_score.astype(float)\n    dataframe.sentiment_magnitude = dataframe.sentiment_magnitude.astype(float)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "628042c338d0a7a0fd5d70b96d0f352daf302e9e"
+      },
+      "cell_type": "code",
+      "source": "def fillna(dataframe):\n    for i in dataframe.columns:\n        if i not in ['Name', 'Description', 'PetID', 'RescuerID']:\n            if i not in ['Age', 'Quantity', 'PhotoAmt', 'VideoAmt', 'sentiment_score', 'sentiment_magnitude', 'Fee']:\n                dataframe[i].fillna(dataframe[i].mode()[0], inplace = True)\n            else:\n                dataframe[i].fillna(dataframe[i].mean(), inplace = True)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "0643bb16852f6be18aa5213af68743815b098f02"
+      },
+      "cell_type": "code",
+      "source": "def add_length(dataframe):\n    dataframe['desc_len'] = 0\n    for i in range(0, len(dataframe)):\n        dataframe.iat[i, dataframe.columns.get_loc('desc_len')] = len(str(dataframe.Description[i]))\n\n        \ndef sqrt_age(dataframe):\n    dataframe.Age = np.sqrt(dataframe.Age)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "d557a69b8887dbfd8b3db5df842f4e53fabe92a1"
+      },
+      "cell_type": "code",
+      "source": "def find_weights(dataframe): \n    weights = []\n    count = 0\n    for i in range(0,5):\n        count = 0\n        weight = 0.0\n        for j in dataframe.AdoptionSpeed:\n            if j == i:\n                count += 1\n        weight = count/len(dataframe.AdoptionSpeed)\n        weights.append(weight)\n    return weights",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "41e6406c34230d68a83df2e5dece037d33faf195"
+      },
+      "cell_type": "code",
+      "source": "add_pure(pets)\nadd_pure(pets2)\nadd_sentiments(pets, '../input/train_sentiment/')\nadd_sentiments(pets2, '../input/test_sentiment/')\nsentiment_to_float(pets)\nsentiment_to_float(pets2)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "acc7d7a799e0d65246b02b00ac8399d5cd9417a0"
+      },
+      "cell_type": "code",
+      "source": "add_length(pets)\nadd_length(pets2)\n#sqrt_age(pets)\n#sqrt_age(pets2)\n#fillna(pets)\n#fillna(pets2)\npets = pets.drop(['Name', 'PetID', 'Description','RescuerID'], axis = 1)\npets2 = pets2.drop(['Name', 'PetID', 'Description','RescuerID'], axis = 1)\npets = pd.get_dummies(pets)\npets2 = pd.get_dummies(pets2)\n#pets",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "108af23cffff0af0fe104568f3cf5cceb114cb8b"
+      },
+      "cell_type": "code",
+      "source": "sns.countplot(x='AdoptionSpeed', data = pets)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "17cecbb485124b6b081d38293bab4a694771e216"
+      },
+      "cell_type": "code",
+      "source": "sns.pairplot(pets, hue = 'AdoptionSpeed')",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "fb803aedac0978604a7e982fe0375b0bfa608c4b"
+      },
+      "cell_type": "code",
+      "source": "create_cats(pets)\ncreate_cats(pets2)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "18279426c2dd192e8bd176e213faf7ef7654a810"
+      },
+      "cell_type": "code",
+      "source": "pets_vars = pets.columns.tolist()\nadopt = ['AdoptionSpeed']\nX=[i for i in pets_vars if i not in adopt]",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "e2e53b9eda36b7edc908137cb3b472d8bf23299c"
+      },
+      "cell_type": "code",
+      "source": "k=find_weights(pets)\nbalance_weight = {0 :int((max(k)*len(pets))-(min(k)*len(pets)))}",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "51439ccf793ea89165d390b9a45ce8a247eaa100"
+      },
+      "cell_type": "code",
+      "source": "#len(pets[X]), len(pets[adopt].values.ravel())",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "75c0c84a740c6c3f362d28fabb45964f96216b92"
+      },
+      "cell_type": "code",
+      "source": "y = pets[adopt]\n#new_XX = \nsmote = SMOTE(sampling_strategy = 'not majority', k_neighbors = 100)\nnew_XX, y = smote.fit_resample(pets[X], y.values.ravel())\n\n#smote = SMOTE(sampling_strategy = balance_weight, k_neighbors = 20,)\n#pets[X], pets[adopt] = smote.fit_resample(np.asarray(pets[X]), np.asarray(pets[adopt].values.ravel()))",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "5317b7763aa4c4ab9464dcb2677666155705677c"
+      },
+      "cell_type": "code",
+      "source": "sns.countplot(x=y)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "71583c8447a83cfc725d5f09eae5def0d65ee8e2"
+      },
+      "cell_type": "code",
+      "source": "#pca = PCA(n_components=3)\n#fit = pca.fit(new_XX)\n#print(\"Explained Variance: %s\", fit.explained_variance_ratio_)\n#print((fit.components_[0]))\n\nmodel = ExtraTreesClassifier()\nmodel.fit(new_XX, y)\n#print(model.feature_importances_)\n\nfeature_list = {}\n\nfor i in range(0, len(model.feature_importances_)):\n    feature_list.update({i:model.feature_importances_[i]})\n    \n#sort values\nfeature_list = sorted(feature_list.items(), key=lambda kv: kv[1], reverse = True)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "517911d1e4546acdb6a630848ef7d529771b581a"
+      },
+      "cell_type": "code",
+      "source": "j = feature_list[0:35]\n\nnew_X = []\nfor i in j:\n    #print(i[0])\n    #var = i[]\n    new_X.append(X[i[0]])\n\n#new_X\ntrain_X = pd.DataFrame(data = new_XX, columns=X)\ntrain_x = train_X[new_X]\ntest_x = pets2[new_X]",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "418598dfc5b0930293c150cc00b6ec4472b69910"
+      },
+      "cell_type": "code",
+      "source": "rf_model = RandomForestClassifier(class_weight = 'balanced', n_estimators = 1000, random_state = 42)\nrf_model.fit(train_x, y)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "0194ef1ddfa0b31ef4fa68de7f195da626600175"
+      },
+      "cell_type": "code",
+      "source": "#importance = list(rf_model.feature_importances_)\n#importance = sorted(importance,  reverse = True)\n#importance",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "40de278b39097591ef85ea0598b898fa36be339d"
+      },
+      "cell_type": "code",
+      "source": "#for i in X:\n    #if i not in pets2.columns.tolist():\n        #pets2[i] = 0\n        #print(i)\n\n#pets2",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "7cdc3bfacbfc4d465d2786a1227c3569ea63cd1e"
+      },
+      "cell_type": "code",
+      "source": "pred = rf_model.predict(test_x)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "fa9937c8c771e736e108f71e8200f10539ed2a29"
+      },
+      "cell_type": "code",
+      "source": "model = XGBClassifier()\nmodel.fit(train_x,y)\npred_xg = model.predict(test_x)\n\npred_xg = np.round(pred_xg)\npred_xg = pred_xg.astype(int)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "397911ce29bc845888a1defc4d0b6ae2756bc1f8"
+      },
+      "cell_type": "code",
+      "source": "df = {'PetID': petID, 'AdoptionSpeed': pred}\ndf = pd.DataFrame(df)\ndf.AdoptionSpeed = df.AdoptionSpeed.astype('int32')",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "d0a35bd4701f9183767075c3df0eaf2e437f516b"
+      },
+      "cell_type": "code",
+      "source": "df.AdoptionSpeed.value_counts(dropna= False)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "7cea8cf125372c5474701670130b1253c4507114"
+      },
+      "cell_type": "code",
+      "source": "df.to_csv('submission.csv', index = False)",
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "metadata": {
+        "trusted": true,
+        "_uuid": "745d7919f5286b1de82cce7b29faf5019e43769c"
+      },
+      "cell_type": "code",
+      "source": "",
+      "execution_count": null,
+      "outputs": []
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3.6.6",
+      "mimetype": "text/x-python",
+      "codemirror_mode": {
+        "name": "ipython",
+        "version": 3
+      },
+      "pygments_lexer": "ipython3",
+      "nbconvert_exporter": "python",
+      "file_extension": ".py"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 1
+}
